@@ -1,0 +1,14 @@
+{
+    "model_type": "\u652f\u6301\u5411\u91cf\u673a",
+    "model_params": {
+        "C": 1.0,
+        "kernel": "rbf",
+        "probability": true,
+        "random_state": 42
+    },
+    "training_timestamp": "20250616_022731",
+    "feature_type": "\u81ea\u9009\u7279\u5f81\u5217",
+    "test_size": 0.2,
+    "random_state": 42,
+    "feature_columns": null
+}
