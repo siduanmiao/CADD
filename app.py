@@ -58,7 +58,7 @@ import os
 from utils import *
 
 # --- Streamlit UI ---
-sidebar_option = st.sidebar.selectbox("选择功能", ["首页", "数据展示", "模型训练", "模型预测", "查看已有项目", "知识获取"])
+sidebar_option = st.sidebar.selectbox("选择功能", ["首页", "数据展示", "模型训练", "模型预测", "查看已有项目", "知识获取","药物结构可视化"])
 
 # 首页
 if sidebar_option == "首页":
@@ -139,15 +139,15 @@ if sidebar_option == "首页":
         st.markdown("""
             <div class="card" onclick="window.location.href='#'">
                 <div class="card-title">知识获取</div>
-                <div class="card-description">获取文献中的毒副作用信息，支持文献摘要提取。</div>
+                <div class="card-description">获取文献中的药物成药性信息，支持文献摘要提取。</div>
             </div>
         """, unsafe_allow_html=True)
 
     with col3:
         st.markdown("""
             <div class="card" onclick="window.location.href='#'">
-                <div class="card-title">其他功能</div>
-                <div class="card-description">补充其他计算机辅助药物设计相关功能。</div>
+                <div class="card-title">药物结构可视化</div>
+                <div class="card-description">可视化感兴趣的药物结构，支持交互式编辑与下载。</div>
             </div>
         """, unsafe_allow_html=True)
     
@@ -722,3 +722,148 @@ elif sidebar_option == "知识获取":
                 
         else:
             st.error("请输入化合物名称或相关关键词")
+            
+elif sidebar_option == "药物结构可视化":
+    st.title("药物结构可视化")
+    
+    # 初始化session state
+    if 'edited_mol' not in st.session_state:
+        st.session_state.edited_mol = None
+    
+    input_source = st.radio("选择输入来源", ["SMILES输入", "PubChem搜索"])
+    
+    initial_smiles = None
+    
+    if input_source == "SMILES输入":
+        initial_smiles = st.text_input("输入分子SMILES", 
+            r"C1C=CC(C)=C(CC2C=C(CCC)C=C2)C=1")
+    
+    elif input_source == "PubChem搜索":
+        compound_name = st.text_input("输入化合物名称(英文):")
+        if compound_name:
+            try:
+                compounds = pcp.get_compounds(compound_name, 'name')
+                if compounds:
+                    compound = compounds[0]
+                    initial_smiles = compound.canonical_smiles
+                    st.success(f"已找到化合物: {compound_name}")
+                else:
+                    st.warning("未找到该化合物")
+            except Exception as e:
+                st.error(f"搜索出错: {str(e)}")
+    
+    if initial_smiles:
+        try:
+            mol = Chem.MolFromSmiles(initial_smiles)
+            if mol:
+                mol_block = Chem.MolToMolBlock(mol)
+                
+                st.subheader("结构编辑器")
+                edited_mol = st_ketcher(mol_block)
+                
+                # 保存编辑后的结构到session state
+                if edited_mol:
+                    st.session_state.edited_mol = edited_mol
+                
+                # 使用session state中的结构进行后续处理
+                if st.session_state.edited_mol:
+                    try:
+                        edited_rdkit_mol = Chem.MolFromMolBlock(st.session_state.edited_mol)
+                        if edited_rdkit_mol:
+                            new_smiles = Chem.MolToSmiles(edited_rdkit_mol)
+                            
+                            # 显示编辑后的SMILES
+                            st.subheader("编辑后的结构")
+                            st.code(new_smiles, language="plaintext")
+                            
+                            # 生成不同格式的分子表示
+                            mol_block = Chem.MolToMolBlock(edited_rdkit_mol)
+                            pdb_block = Chem.MolToPDBBlock(edited_rdkit_mol)
+                            inchi = Chem.MolToInchi(edited_rdkit_mol)
+                            inchikey = Chem.MolToInchiKey(edited_rdkit_mol)
+                            
+                            # 创建下载按钮
+                            st.subheader("下载结构")
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.download_button(
+                                    label="下载SMILES",
+                                    data=new_smiles,
+                                    file_name="molecule.smi",
+                                    mime="chemical/x-daylight-smiles"
+                                )
+                                
+                                st.download_button(
+                                    label="下载MOL文件",
+                                    data=mol_block,
+                                    file_name="molecule.mol",
+                                    mime="chemical/x-mdl-molfile"
+                                )
+                            
+                            with col2:
+                                st.download_button(
+                                    label="下载PDB文件",
+                                    data=pdb_block,
+                                    file_name="molecule.pdb",
+                                    mime="chemical/x-pdb"
+                                )
+                                
+                                st.download_button(
+                                    label="下载InChI",
+                                    data=inchi,
+                                    file_name="molecule.inchi",
+                                    mime="chemical/x-inchi"
+                                )
+                            
+                            # 显示分子性质
+                            with st.expander("查看分子性质"):
+                                prop_col1, prop_col2 = st.columns(2)
+                                with prop_col1:
+                                    st.write("基本性质:")
+                                    st.write(f"分子量: {Descriptors.ExactMolWt(edited_rdkit_mol):.2f}")
+                                    st.write(f"LogP: {Descriptors.MolLogP(edited_rdkit_mol):.2f}")
+                                    st.write(f"TPSA: {Descriptors.TPSA(edited_rdkit_mol):.2f}")
+                                with prop_col2:
+                                    st.write("结构特征:")
+                                    st.write(f"原子数: {edited_rdkit_mol.GetNumAtoms()}")
+                                    st.write(f"环数: {Descriptors.RingCount(edited_rdkit_mol)}")
+                                    st.write(f"芳香环数: {Descriptors.NumAromaticRings(edited_rdkit_mol)}")
+                            
+                            # 显示其他标识符
+                            with st.expander("其他分子标识符"):
+                                st.write("InChI:", inchi)
+                                st.write("InChIKey:", inchikey)
+                                
+                    except Exception as e:
+                        st.error(f"处理编辑后的结构时出错: {str(e)}")
+        except Exception as e:
+            st.error(f"处理初始SMILES时出错: {str(e)}")
+
+    # 添加使用说明
+    st.sidebar.markdown("""
+    ### 使用说明
+    
+    1. 选择输入来源:
+       - SMILES直接输入
+       - PubChem名称搜索
+    
+    2. 使用结构编辑器:
+       - 可以直接编辑分子结构
+       - 点击"Apply"保存修改
+       - 支持2D结构调整
+    
+    3. 导出选项:
+       - SMILES格式 (.smi)
+       - MOL格式 (.mol)
+       - PDB格式 (.pdb)
+       - InChI格式 (.inchi)
+    
+    ### 编辑器快捷键
+    - 选择: V
+    - 原子: A
+    - 键: B
+    - 橡皮擦: E
+    - 撤销: Ctrl+Z
+    - 重做: Ctrl+Y
+    """)
